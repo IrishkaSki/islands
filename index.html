@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Острова Ветра</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☁️</text></svg>">
+<style>
+  :root{
+    --cream:#fff7e6;
+    --cream-dim:rgba(255,247,230,.68);
+    --teal:#0f3d3a;
+    --glass:rgba(12,38,41,.34);
+    --glass-strong:rgba(9,30,33,.55);
+    --line:rgba(255,247,230,.22);
+    --sun:#ffcc6d;
+    --sun2:#ff9b4a;
+    --mint:#8ff0d8;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden;background:#a8ccd8}
+  body{
+    font-family:"Trebuchet MS","Segoe UI",system-ui,-apple-system,sans-serif;
+    color:var(--cream);
+    user-select:none;
+  }
+  #game{position:fixed;inset:0}
+  #game canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+  #game canvas.dragging{cursor:grabbing}
+  #vignette{
+    position:fixed;inset:0;pointer-events:none;z-index:2;
+    background:
+      radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(6,24,28,.38) 100%),
+      linear-gradient(to bottom, rgba(255,228,180,.05), transparent 30%);
+  }
+  #flash{
+    position:fixed;inset:0;pointer-events:none;z-index:5;opacity:0;
+    background:radial-gradient(circle at 50% 50%, rgba(176,255,238,.5), transparent 62%);
+    transition:opacity .55s ease-out;
+  }
+  #flash.on{opacity:1;transition:opacity .04s}
+  #ui{position:fixed;inset:0;z-index:4;pointer-events:none;opacity:0;transition:opacity 1s ease .35s}
+  body.running #ui{opacity:1}
+  button{font-family:inherit;color:inherit}
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    position:absolute;top:calc(18px + env(safe-area-inset-top));left:20px;right:20px;
+    display:flex;justify-content:space-between;align-items:flex-start;gap:14px;
+  }
+  .chips-right{display:flex;gap:10px;align-items:center}
+  .chip{
+    display:flex;align-items:center;gap:9px;
+    padding:10px 15px;border-radius:999px;
+    background:var(--glass);border:1px solid var(--line);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    box-shadow:0 8px 26px rgba(5,25,28,.18);
+    font-size:13.5px;letter-spacing:.02em;
+  }
+  .place .dot{
+    width:8px;height:8px;border-radius:50%;background:var(--sun);
+    box-shadow:0 0 0 4px rgba(255,204,109,.16), 0 0 12px rgba(255,204,109,.75);
+    animation:pulse 2.6s ease-in-out infinite;
+  }
+  @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.76);opacity:.65}}
+  .place .label{opacity:.55;font-size:11px;letter-spacing:.13em;text-transform:uppercase;margin-right:2px}
+  .place{min-width:0;max-width:min(72vw,560px)}
+  #placeName{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .crystal-chip{gap:8px}
+  .crystal-chip svg{color:#93f4e0;filter:drop-shadow(0 0 6px rgba(128,245,222,.55))}
+  .crystal-chip .muted{opacity:.48}
+  #crystalCount{font-weight:700;font-size:15px}
+  .icon-btn{
+    width:42px;height:42px;border-radius:50%;
+    background:var(--glass);border:1px solid var(--line);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    display:grid;place-items:center;cursor:pointer;pointer-events:auto;
+    transition:transform .18s ease, background .2s ease, opacity .2s;
+  }
+  .icon-btn:hover{background:rgba(20,60,62,.52);transform:translateY(-1px)}
+  .icon-btn:active{transform:scale(.94)}
+  .icon-btn svg{width:18px;height:18px;opacity:.9}
+  .icon-btn.muted svg{opacity:.45}
+  .icon-btn.muted::after{
+    content:"";position:absolute;width:26px;height:1.5px;background:var(--cream);
+    transform:rotate(-45deg);border-radius:2px;opacity:.8;
+  }
+  .icon-btn{position:relative}
+
+  /* ---------- toast ---------- */
+  .toast{
+    position:absolute;top:calc(78px + env(safe-area-inset-top));left:50%;
+    transform:translate(-50%,-10px);
+    padding:11px 20px;border-radius:12px;
+    background:var(--glass-strong);border:1px solid var(--line);
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    font-size:14px;letter-spacing:.015em;white-space:nowrap;
+    opacity:0;transition:opacity .35s ease, transform .35s ease;
+    box-shadow:0 10px 30px rgba(4,20,24,.25);max-width:calc(100vw - 40px);
+    overflow:hidden;text-overflow:ellipsis;
+  }
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+  .toast strong{color:var(--sun)}
+
+  /* ---------- controls card ---------- */
+  .controls{
+    position:absolute;left:20px;bottom:calc(22px + env(safe-area-inset-bottom));
+    padding:14px 16px 13px;border-radius:16px;
+    background:var(--glass);border:1px solid var(--line);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    font-size:12px;line-height:1.8;color:var(--cream-dim);
+    width:300px;max-width:calc(100vw - 40px);
+  }
+  .controls .title{
+    color:var(--cream);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;
+    opacity:.55;margin-bottom:5px;
+  }
+  .controls .row{display:flex;align-items:center;flex-wrap:wrap;gap:6px;white-space:normal}
+  .controls .row + .row{margin-top:2px}
+  .controls kbd{
+    display:inline-block;min-width:21px;padding:1px 5px;border-radius:5px;text-align:center;
+    background:rgba(255,247,230,.1);border:1px solid rgba(255,247,230,.22);
+    border-bottom-color:rgba(255,247,230,.34);
+    font-family:inherit;font-size:10.5px;color:var(--cream);letter-spacing:.03em;
+  }
+  .controls .sep{opacity:.35;margin:0 1px}
+  .controls .small{font-size:11px;opacity:.62;line-height:1.65}
+
+  /* ---------- flight / fuel ---------- */
+  .flight-panel{
+    position:absolute;right:24px;bottom:calc(104px + env(safe-area-inset-bottom));
+    width:168px;text-align:right;
+  }
+  .fuel{
+    height:6px;border-radius:99px;overflow:hidden;
+    background:rgba(8,28,30,.45);border:1px solid rgba(255,247,230,.16);
+    box-shadow:inset 0 1px 3px rgba(0,0,0,.25);
+  }
+  #fuelFill{
+    height:100%;width:100%;border-radius:99px;
+    background:linear-gradient(90deg,#7fe6c8,#bff7a8 60%,#ffe07a);
+    box-shadow:0 0 12px rgba(150,255,214,.45);
+    transition:width .12s linear, background .3s;
+  }
+  .flight-panel.low #fuelFill{background:linear-gradient(90deg,#ff9b6b,#ffc267)}
+  #fuelLabel{
+    margin-top:6px;font-size:10px;letter-spacing:.13em;text-transform:uppercase;
+    color:var(--cream-dim);opacity:.72;
+  }
+
+  /* ---------- fly button ---------- */
+  .fly-btn{
+    position:absolute;right:24px;bottom:calc(24px + env(safe-area-inset-bottom));
+    display:flex;align-items:center;gap:12px;
+    padding:10px 20px 10px 14px;border-radius:999px;border:1px solid rgba(255,240,205,.5);
+    background:linear-gradient(140deg,#ffe1a2 0%,#ffc46b 42%,#ff9d4d 100%);
+    color:#3b2410;cursor:pointer;pointer-events:auto;
+    box-shadow:0 14px 34px rgba(255,150,70,.30), inset 0 1px 0 rgba(255,255,255,.7);
+    transition:transform .16s ease, box-shadow .25s ease, filter .25s;
+    z-index:3;
+  }
+  .fly-btn:hover{transform:translateY(-2px);box-shadow:0 18px 40px rgba(255,150,70,.4), inset 0 1px 0 rgba(255,255,255,.8)}
+  .fly-btn:active{transform:scale(.96)}
+  .fly-btn .fly-icon{
+    width:38px;height:38px;border-radius:50%;display:grid;place-items:center;
+    background:rgba(74,40,12,.12);box-shadow:inset 0 0 0 1px rgba(80,40,10,.12);
+  }
+  .fly-btn .fly-icon svg{width:19px;height:19px;transform:rotate(-8deg)}
+  .fly-btn .fly-text{display:flex;flex-direction:column;align-items:flex-start;line-height:1.05}
+  .fly-btn .fly-text b{font-size:13px;letter-spacing:.16em;text-transform:uppercase;font-weight:800}
+  .fly-btn .fly-text small{font-size:9.5px;letter-spacing:.12em;opacity:.62;margin-top:3px;text-transform:uppercase}
+  .fly-btn.active{
+    background:linear-gradient(140deg,#baf8df 0%,#8cebcf 45%,#4fd2bd 100%);
+    border-color:rgba(220,255,245,.6);
+    box-shadow:0 0 0 5px rgba(111,240,210,.14), 0 14px 40px rgba(55,210,180,.4), inset 0 1px 0 rgba(255,255,255,.75);
+  }
+  .fly-btn.active .fly-icon{background:rgba(10,80,66,.14)}
+  .fly-btn.no-fuel{filter:grayscale(.5) brightness(.86);opacity:.75}
+  .fly-btn.no-fuel .fly-text small{content:""}
+  .fly-btn .wing-glow{display:none}
+  .fly-btn.active .wing-glow{
+    display:block;position:absolute;inset:-10px;border-radius:999px;
+    background:radial-gradient(closest-side, rgba(140,255,226,.35), transparent 70%);
+    animation:breathe 2.4s ease-in-out infinite;pointer-events:none;
+  }
+  @keyframes breathe{0%,100%{opacity:.5;transform:scale(.97)}50%{opacity:1;transform:scale(1.03)}}
+
+  .jump-btn,.descend-btn{
+    position:absolute;right:calc(24px + 88px);display:none;
+    width:54px;height:54px;border-radius:50%;pointer-events:auto;
+    background:var(--glass);border:1px solid var(--line);color:var(--cream);
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    font-size:20px;box-shadow:0 8px 24px rgba(5,25,28,.2);
+    align-items:center;justify-content:center;cursor:pointer;
+    transition:transform .15s, background .2s;
+  }
+  .jump-btn{bottom:calc(30px + env(safe-area-inset-bottom))}
+  .descend-btn{bottom:calc(94px + env(safe-area-inset-bottom))}
+  .jump-btn:active,.descend-btn:active{transform:scale(.92);background:rgba(30,80,80,.5)}
+
+  /* ---------- joystick ---------- */
+  #joystick{
+    position:absolute;left:24px;bottom:calc(28px + env(safe-area-inset-bottom));
+    width:128px;height:128px;border-radius:50%;display:none;pointer-events:auto;
+    background:radial-gradient(circle at 50% 50%, rgba(255,247,230,.10), rgba(8,28,30,.28));
+    border:1px solid rgba(255,247,230,.22);
+    backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+    touch-action:none;
+  }
+  #stick{
+    position:absolute;left:50%;top:50%;width:52px;height:52px;border-radius:50%;
+    transform:translate(-50%,-50%);
+    background:rgba(255,247,230,.22);border:1px solid rgba(255,247,230,.4);
+    box-shadow:0 4px 18px rgba(0,0,0,.18);
+    transition:background .2s;
+  }
+  #joystick.active #stick{background:rgba(255,209,125,.38);border-color:rgba(255,225,170,.7)}
+
+  /* ---------- start screen ---------- */
+  #startScreen{
+    position:fixed;inset:0;z-index:20;display:flex;align-items:center;
+    padding:clamp(24px,7vw,92px);
+    background:
+      linear-gradient(100deg, rgba(6,26,30,.78) 0%, rgba(7,30,34,.52) 38%, rgba(8,30,34,.08) 68%, transparent 100%),
+      linear-gradient(to top, rgba(4,20,24,.55), transparent 42%);
+    transition:opacity .9s ease, visibility .9s;
+    overflow-y:auto;overflow-x:hidden;
+  }
+  #startScreen.gone{opacity:0;visibility:hidden;pointer-events:none}
+  .start-inner{position:relative;max-width:600px;min-width:0;z-index:2;animation:rise .9s cubic-bezier(.2,.8,.2,1) .15s both}
+  @keyframes rise{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:none}}
+  .kicker{
+    display:flex;align-items:center;gap:12px;margin:0 0 24px;
+    font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--cream-dim);
+  }
+  .kicker::before{content:"";width:38px;height:1px;background:linear-gradient(90deg,var(--sun),transparent)}
+  h1{
+    margin:0;font-family:Georgia,"Times New Roman",serif;font-weight:400;
+    font-size:clamp(58px,9vw,116px);line-height:.88;letter-spacing:-.03em;
+    color:var(--cream);text-shadow:0 4px 40px rgba(0,0,0,.25);
+  }
+  h1 em{font-style:italic;color:var(--sun);text-shadow:0 0 50px rgba(255,190,90,.3)}
+  .lead{
+    max-width:min(420px, 100%);margin:28px 0 0;font-size:15.5px;line-height:1.7;
+    color:rgba(255,247,230,.82);text-shadow:0 2px 20px rgba(0,0,0,.2);
+  }
+  .start-actions{display:flex;align-items:center;gap:22px;margin-top:36px;flex-wrap:wrap}
+  #startBtn{
+    display:inline-flex;align-items:center;gap:14px;
+    border:1px solid rgba(255,240,210,.55);border-radius:999px;
+    padding:15px 15px 15px 26px;cursor:pointer;
+    background:linear-gradient(140deg,#ffe4a6,#ffc46b 55%,#ffa04f);
+    color:#38230f;font-weight:800;font-size:13px;letter-spacing:.13em;text-transform:uppercase;
+    box-shadow:0 18px 46px rgba(255,150,70,.28), inset 0 1px 0 rgba(255,255,255,.7);
+    transition:transform .2s ease, box-shadow .25s ease;
+  }
+  #startBtn:hover{transform:translateY(-3px);box-shadow:0 24px 54px rgba(255,150,70,.38), inset 0 1px 0 rgba(255,255,255,.8)}
+  #startBtn:active{transform:scale(.97)}
+  #startBtn .arrow{
+    width:38px;height:38px;border-radius:50%;display:grid;place-items:center;
+    background:rgba(60,32,8,.12);font-size:18px;font-weight:400;letter-spacing:0;
+  }
+  .start-hints{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:rgba(255,247,230,.55);letter-spacing:.03em}
+  .start-hints span{display:flex;align-items:center;gap:7px}
+  .start-hints i{width:4px;height:4px;border-radius:50%;background:var(--sun);opacity:.65}
+  .start-foot{
+    position:absolute;right:clamp(24px,5vw,60px);bottom:26px;z-index:2;
+    display:flex;align-items:center;gap:16px;font-size:10px;letter-spacing:.22em;
+    text-transform:uppercase;color:rgba(255,247,230,.42);
+  }
+  .start-foot .line{width:44px;height:1px;background:rgba(255,247,230,.25)}
+
+  /* ---------- mobile ---------- */
+  @media (max-width:820px){
+    .lead{font-size:14px;margin-top:22px}
+    .start-inner{max-width:100%}
+    .flight-panel{width:132px;bottom:calc(100px + env(safe-area-inset-bottom));right:20px}
+    .fly-btn{right:20px;padding:9px 16px 9px 12px}
+    .fly-btn .fly-text b{font-size:12px}
+    .topbar{top:calc(12px + env(safe-area-inset-top));left:14px;right:14px}
+    .chip{padding:8px 12px;font-size:12px;gap:7px}
+    .place .label{display:none}
+    .start-foot{display:none}
+  }
+  @media (max-width:560px){
+    .controls{display:none}
+  }
+  body.touch .jump-btn, body.touch .descend-btn{display:flex}
+  body.touch #joystick{display:block}
+  body.touch .controls{display:none}
+  body.touch .flight-panel{right:24px;bottom:calc(230px + env(safe-area-inset-bottom));width:140px}
+  body.touch .fly-btn{bottom:calc(24px + env(safe-area-inset-bottom))}
+  body.touch .jump-btn{right:24px;bottom:calc(98px + env(safe-area-inset-bottom))}
+  body.touch .descend-btn{right:24px;bottom:calc(160px + env(safe-area-inset-bottom))}
+  @media (min-width:821px) and (max-width:1100px){
+    .controls{max-width:236px;font-size:12px}
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{animation:none!important;transition-duration:.001s!important}
+  }
+  @media (max-height:620px){
+    h1{font-size:clamp(40px,8vw,72px)}
+    .kicker{margin-bottom:14px}
+    .lead{margin-top:14px;font-size:13px;line-height:1.55}
+    .start-actions{margin-top:20px}
+    .start-foot{display:none}
+  }
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="vignette"></div>
+<div id="flash"></div>
+
+<div id="ui">
+  <div class="topbar">
+    <div class="chip place">
+      <span class="dot"></span>
+      <span class="label" id="placeLabel">вы на</span>
+      <span id="placeName">Небесные просторы</span>
+    </div>
+    <div class="chips-right">
+      <div class="chip crystal-chip" title="Собранные кристаллы">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">
+          <path d="M12 2.6 20 8.7l-8 12.7L4 8.7 12 2.6Z"/>
+          <path d="M4.2 8.7h15.6M8.6 8.7 12 21M15.4 8.7 12 21" opacity=".55" stroke-width=".9"/>
+        </svg>
+        <span id="crystalCount">0</span><span class="muted">/ 12</span>
+      </div>
+      <button id="soundBtn" class="icon-btn" aria-label="Звук" title="Включить или выключить звук">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 9v6h4l5 4V5L8 9H4Z"/>
+          <path id="soundWaves" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <div class="controls">
+    <div class="title">Управление</div>
+    <div class="row"><kbd>W</kbd><kbd>S</kbd><span>вперёд / назад</span><span class="sep">·</span><kbd>Shift</kbd><span>бег</span></div>
+    <div class="row"><kbd>A</kbd><kbd>D</kbd><span>поворот</span><span class="sep">·</span><kbd>Пробел</kbd><span>прыжок</span></div>
+    <div class="row"><kbd>F</kbd><span>полёт</span><span class="sep">·</span><kbd>Мышь</kbd><span>наклон</span></div>
+    <div class="row"><kbd>R</kbd><span>к острову</span><span class="sep">·</span><kbd>Колесо</kbd><span>зум</span></div>
+    <div class="row small">В полёте: <kbd>Пробел</kbd> вверх · <kbd>Shift</kbd> вниз</div>
+  </div>
+
+  <div id="flightPanel" class="flight-panel">
+    <div class="fuel"><div id="fuelFill"></div></div>
+    <div id="fuelLabel">энергия полёта</div>
+  </div>
+
+  <button id="flyBtn" class="fly-btn" aria-label="Летать" aria-pressed="false">
+    <span class="wing-glow"></span>
+    <span class="fly-icon">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.6 3.2c-.3-.3-.8-.4-1.2-.2L2.9 10.2c-.5.2-.7.7-.5 1.1.1.3.4.5.7.6l4.5 1.3 1.8 4.7c.2.5.8.7 1.2.4.1-.1.3-.2.3-.4l1.7-3.5 3.9 2.9c.2.2.5.2.7.1.3-.1.5-.3.5-.6l3.2-12.4c.2-.4.1-.9-.2-1.2ZM9.7 13.4l-.7 2.9-.9-2.5 6.3-5.5-4.7 5.1Z"/></svg>
+    </span>
+    <span class="fly-text"><b>Летать</b><small>клавиша F</small></span>
+  </button>
+
+  <button id="jumpBtn" class="jump-btn" aria-label="Прыжок">↑</button>
+  <button id="descendBtn" class="descend-btn" aria-label="Вниз">↓</button>
+
+  <div id="joystick"><div id="stick"></div></div>
+</div>
+
+<div id="startScreen">
+  <div class="start-inner">
+    <p class="kicker">Архипелаг в небесах</p>
+    <h1>Острова<br><em>Ветра</em></h1>
+    <p class="lead">Восемь парящих островов, шаткие мосты над облаками и двенадцать кристаллов, спрятанных среди тропинок. Беги, исследуй, лети.</p>
+    <div class="start-actions">
+      <button id="startBtn">Начать путешествие <span class="arrow">→</span></button>
+      <div class="start-hints">
+        <span><i></i>W/S — идти</span>
+        <span><i></i>A/D — поворот</span>
+        <span><i></i>F — полёт</span>
+      </div>
+    </div>
+  </div>
+  <div class="start-foot"><span class="line"></span><span>прогулка на 20–30 минут</span></div>
+</div>
+
+<script src="vendor/three.min.js"></script>
+<script src="src/terrain.js"></script>
+<script src="src/audio.js"></script>
+<script src="src/player.js"></script>
+<script src="src/world.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>
